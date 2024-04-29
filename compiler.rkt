@@ -57,11 +57,13 @@
 (define (uniquify-exp env)
   (lambda (e)
     (match e
-      [(Var x)
-       (error "TODO: code goes here (uniquify-exp Var)")]
+      [(Var x) (Var (dict-ref env x (string->symbol (format "~a.~a" x (gensym)))))]
       [(Int n) (Int n)]
       [(Let x e body)
-       (error "TODO: code goes here (uniquify-exp Let)")]
+       (define new-x (string->symbol (format "~a.~a" x (gensym))))
+       (Let new-x
+            ((uniquify-exp env) e)
+            ((uniquify-exp (cons (cons x new-x) env)) body))]
       [(Prim op es)
        (Prim op (for/list ([e es]) ((uniquify-exp env) e)))])))
 
@@ -70,9 +72,43 @@
   (match p
     [(Program info e) (Program info ((uniquify-exp '()) e))]))
 
+(define (remove_complex_operands env)
+  (letrec ([rco_prim (lambda (e1 e2 op)
+                      (define-values (x1 mapping1) (rco_atm e1))
+                      (define-values (x2 mapping2) (rco_atm e2))
+                      (match (list (or (Int? e1) (Var? e1))
+                                    (or (Int? e2) (Var? e2)))
+                        ['(#t #t) (Prim op (list e1 e2))]
+                        ['(#t #f) (Let x2 (dict-ref mapping2 x2)
+                                        (Prim op (list e1 (Var x2))))]
+                        ['(#f #t) (Let x1 (dict-ref mapping1 x1)
+                                        (Prim op (list (Var x1) e2)))]
+                        ['(#t #t) (Let x1 (dict-ref mapping1 x1)
+                                        (Let x2 (dict-ref mapping2 x2)
+                                            (Prim op (list (Var x1) (Var x2)))))]))]
+          [rco_atm (lambda (e)
+                      (define tmp-var (string->symbol (format "tmp.~a" (gensym))))
+                      (values tmp-var (list (cons tmp-var e))))]
+          [rco_exp (lambda (e)
+                      (match e
+                        [(Int n) (Int n)]
+                        [(Var x) (Var x)]
+                        [(Prim '- (list _))
+                         (define-values (x mapping) (rco_atm e))
+                         (Let x (dict-ref mapping x) (Var x))]
+                        [(Prim '+ (list e1 e2))
+                         (rco_prim e1 e2 '+)]
+                        [(Prim '- (list e1 e2))
+                         (rco_prim e1 e2 '-)]
+                        [(Let x e body)
+                         (Let x (rco_exp e) (rco_exp body))]))])
+    (lambda (e)
+      (rco_exp e))))
+
 ;; remove-complex-opera* : Lvar -> Lvar^mon
 (define (remove-complex-opera* p)
-  (error "TODO: code goes here (remove-complex-opera*)"))
+  (match p
+    [(Program info e) (Program info ((remove_complex_operands '()) e))]))
 
 ;; explicate-control : Lvar^mon -> Cvar
 (define (explicate-control p)
@@ -100,8 +136,8 @@
 (define compiler-passes
   `(
      ;; Uncomment the following passes as you finish them.
-     ;; ("uniquify" ,uniquify ,interp-Lvar ,type-check-Lvar)
-     ;; ("remove complex opera*" ,remove-complex-opera* ,interp-Lvar ,type-check-Lvar)
+    ("uniquify" ,uniquify ,interp-Lvar ,type-check-Lvar)
+    ("remove complex opera*" ,remove-complex-opera* ,interp-Lvar ,type-check-Lvar)
      ;; ("explicate control" ,explicate-control ,interp-Cvar ,type-check-Cvar)
      ;; ("instruction selection" ,select-instructions ,interp-x86-0)
      ;; ("assign homes" ,assign-homes ,interp-x86-0)

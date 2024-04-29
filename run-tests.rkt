@@ -6,7 +6,9 @@
 (require "interp-Cvar.rkt")
 (require "interp.rkt")
 (require "compiler.rkt")
-;; (debug-level 1)
+(require "type-check-Lvar.rkt")
+
+(debug-level 1)
 ;; (AST-output-syntax 'concrete-syntax)
 
 ;; all the files in the tests/ directory with extension ".rkt".
@@ -23,6 +25,12 @@
         (lambda (p)
           (string=? r (car (string-split p "_"))))
         all-tests)))
+
+(define passes
+  (list 
+    (list "uniquify" uniquify interp-Lvar type-check-Lvar)
+    (list "remove-complex" remove-complex-opera* interp-Lvar type-check-Lvar)
+  ))
 
 ;; The following tests the intermediate-language outputs of the passes.
 (interp-tests "var" #f compiler-passes interp-Lvar "var_test" (tests-for "var"))
